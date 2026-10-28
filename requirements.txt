@@ -1,0 +1,5 @@
+UnityPy>=1.20
+numpy
+Pillow
+fonttools
+scipy
