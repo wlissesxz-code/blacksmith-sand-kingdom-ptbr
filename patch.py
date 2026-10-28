@@ -13,7 +13,7 @@ Uso:
 """
 import argparse, glob, io, json, os, re, shutil, sys, tempfile
 
-HERE = os.path.dirname(os.path.abspath(__file__))
+HERE = getattr(sys, "_MEIPASS", None) or os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "lib"))
 
 try:
@@ -210,15 +210,46 @@ def restore(assets):
     print("Jogo restaurado ao original.")
 
 
+def _pause():
+    if getattr(sys, "frozen", False) or sys.stdin.isatty():
+        try:
+            input("\nAperte Enter para sair...")
+        except EOFError:
+            pass
+
+
+def _ask_folder():
+    # arrastar a pasta do jogo para cima do .exe também funciona (vem como argumento)
+    cwd = os.getcwd()
+    try:
+        return find_assets(cwd)
+    except SystemExit:
+        pass
+    while True:
+        p = input("Cole o caminho da pasta do jogo (ex.: D:\\Games\\Blacksmith of the Sand Kingdom): ").strip().strip('"')
+        try:
+            return find_assets(p)
+        except SystemExit as e:
+            print(e)
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("game", help="pasta do jogo (ou StreamingAssets/100)")
+    ap.add_argument("game", nargs="?", help="pasta do jogo (ou StreamingAssets/100)")
     ap.add_argument("--restore", action="store_true", help="restaura os arquivos originais")
     args = ap.parse_args()
-    assets = find_assets(args.game)
+    interactive = args.game is None
+    if interactive:
+        print("=== Blacksmith of the Sand Kingdom - Tradução PT-BR ===")
+        print("1) Instalar tradução\n2) Restaurar original")
+        args.restore = input("Escolha [1]: ").strip() == "2"
+        assets = _ask_folder()
+    else:
+        assets = find_assets(args.game)
     print("Arquivos do jogo:", assets)
     if args.restore:
-        return restore(assets)
+        restore(assets)
+        return _pause() if interactive else None
 
     bk = os.path.join(assets, BACKUP_DIR)
     if not os.path.isdir(bk):
@@ -244,12 +275,23 @@ def main():
         applied, scaled, problems = patch_exceldb(os.path.join(bk, "exceldb"), os.path.join(tmp, "exceldb"),
                                                   tr, namemap, make_nlines(adv))
         print(f"    textos aplicados: {applied} (ajustados ao tamanho: {scaled})")
-        if problems:
-            print(f"    aviso: {len(problems)} textos com tags diferentes do original (esperado: 1 no Manual)")
         for b in BUNDLES:
             shutil.copy2(os.path.join(tmp, b), os.path.join(assets, b))
     print("\nPronto! Abra o jogo e escolha Opções > Idioma > Português.")
+    if interactive:
+        _pause()
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except SystemExit as e:
+        if e.code not in (None, 0):
+            print(e.code)
+            _pause()
+        raise
+    except Exception:
+        import traceback
+        traceback.print_exc()
+        _pause()
+        sys.exit(1)
